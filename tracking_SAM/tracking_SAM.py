@@ -6,6 +6,7 @@ import tracking_SAM.aott
 import tracking_SAM.plt_clicker
 from segment_anything import sam_model_registry, SamPredictor
 
+
 import groundingdino.datasets.transforms as T
 from groundingdino.models import build_model
 from groundingdino.util import box_ops
@@ -13,6 +14,9 @@ from groundingdino.util.slconfig import SLConfig
 from groundingdino.util.utils import clean_state_dict
 from groundingdino.util.inference import predict
 
+import logging
+
+logger = logging.getLogger(__name__)
 
 class main_tracker:
     def __init__(
@@ -27,12 +31,15 @@ class main_tracker:
         self.device = device
         self.tracking = False
 
+
+        logger.info(f"Loading SAM model from {sam_checkpoint}")
         self.sam = sam_model_registry[sam_model_type](checkpoint=sam_checkpoint)
         self.sam.to(device=device)
         self.sam_predictor = SamPredictor(self.sam)
         self.num_objs = num_objs
 
         # Custom wrapper for AOTT
+        logger.info(f"Loading AOT model from {aot_checkpoint}")
         self.vos_tracker = tracking_SAM.aott.aot_segmenter(aot_checkpoint)
 
         self.reset_engine()

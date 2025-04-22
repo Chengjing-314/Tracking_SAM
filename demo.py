@@ -16,7 +16,9 @@ def main(sam_checkpoint, aot_checkpoint, grounding_dino_checkpoint, play_delay):
 
     image_np_list = [np.array(Image.open(x)) for x in image_paths_list]
 
-    my_tracking_SAM = tracking_SAM.main_tracker(sam_checkpoint, aot_checkpoint, grounding_dino_checkpoint)
+    print(f"Loaded {len(image_np_list)} images from {test_data_base_dir}")
+
+    my_tracking_SAM = tracking_SAM.main_tracker(sam_checkpoint, aot_checkpoint, grounding_dino_checkpoint, num_objs=2)
 
     for i in range(len(image_np_list)):
         image_np_rgb = image_np_list[i]
