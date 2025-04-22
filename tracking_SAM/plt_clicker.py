@@ -1,4 +1,3 @@
-
 import cv2
 import argparse
 import numpy as np
@@ -11,7 +10,7 @@ import matplotlib.pyplot as plt
 
 
 class Annotator(object):
-    def __init__(self, img_np, sam_predictor, save_path=None):
+    def __init__(self, img_np, sam_predictor, save_path=None, num_objs: int = 1):
         self.sam_predictor = sam_predictor
         self.save_path = save_path
         self.img = img_np.copy()
@@ -19,6 +18,8 @@ class Annotator(object):
         self.clicks = np.empty([0, 2], dtype=np.int64)
         self.pred = np.zeros(self.img.shape[:2], dtype=np.uint8)
         self.merge = self.__gene_merge(self.pred, self.img, self.clicks)
+        self.masks = []
+        self.num_objs = num_objs
 
     def __gene_merge(self, pred, img, clicks, r=9, cb=2, b=2, if_first=True):
         pred_mask = cv2.merge([pred * 255, pred * 255, np.zeros_like(pred)])
@@ -34,6 +35,11 @@ class Annotator(object):
         return result
 
     def __update(self):
+        full_pred = np.zeros_like(self.pred)
+        for m in self.masks:
+            full_pred[m > 0] = 1
+        full_pred[self.pred > 0] = 1
+        self.merge = self.__gene_merge(full_pred, self.img, self.clicks)
         self.ax1.imshow(self.merge)
         self.fig.canvas.draw()
 
@@ -44,8 +50,7 @@ class Annotator(object):
         self.__update()
 
     def __predict(self):
-        # TODO(roger): support multiple instances and negative clicks
-        input_label = np.ones((self.clicks.shape[0], ))
+        input_label = np.ones((self.clicks.shape[0],))
         masks, scores, logits = self.sam_predictor.predict(
             point_coords=self.clicks,
             point_labels=input_label,
@@ -56,46 +61,56 @@ class Annotator(object):
         self.__update()
 
     def __on_key_press(self, event):
-        if event.key == 'ctrl+z':
+        if event.key == "ctrl+z":
             self.clicks = self.clicks[:-1, :]
             if len(self.clicks) != 0:
                 self.__predict()
             else:
                 self.__reset()
-        elif event.key == 'ctrl+r':
+        elif event.key == "ctrl+r":
             self.__reset()
-        elif event.key == 'escape':
+        elif event.key == "escape":
             plt.close()
-        elif event.key == 'enter':
-            if self.save_path is not None:
-                Image.fromarray(self.pred * 255).save(self.save_path)
-                print('save mask in [{}]!'.format(self.save_path))
-            plt.close()
+        elif event.key == "enter":
+            self.masks.append(self.pred.copy())
+            if self.num_objs is not None and len(self.masks) == self.num_objs:
+                plt.close()
+                if self.save_path is not None:
+                    Image.fromarray(self.pred * 255).save(self.save_path)
+                    print("save mask in [{}]!".format(self.save_path))
+            else:
+                self.__reset()
+                self.__update()
 
     def __on_button_press(self, event):
         if (event.xdata is None) or (event.ydata is None):
             return
         if event.button == 1:  # 1 for left click; 3 for right click
             x, y = int(event.xdata + 0.5), int(event.ydata + 0.5)
-            self.clicks = np.append(self.clicks, np.array(
-                [[x, y]], dtype=np.int64), axis=0)
+            self.clicks = np.append(self.clicks, np.array([[x, y]], dtype=np.int64), axis=0)
             self.__predict()
 
     def main(self):
-        self.fig = plt.figure('Annotator', figsize=(10, 7))
-        self.fig.canvas.mpl_connect('key_press_event', self.__on_key_press)
+        self.fig = plt.figure("Annotator", figsize=(10, 7))
+        self.fig.canvas.mpl_connect("key_press_event", self.__on_key_press)
         self.fig.canvas.mpl_connect("button_press_event", self.__on_button_press)
-        self.fig.suptitle('[RESET]: ctrl+r; [REVOKE]: ctrl+z; [EXIT]: esc; [DONE]: enter', fontsize=14)
+        self.fig.suptitle("[RESET]: ctrl+r; [REVOKE]: ctrl+z; [EXIT]: esc; [DONE]: enter", fontsize=14)
         self.ax1 = self.fig.add_subplot(1, 1, 1)
-        self.ax1.axis('off')
+        self.ax1.axis("off")
         self.ax1.imshow(self.merge)
         plt.show()
-    
+
     def get_mask(self):
-        return self.pred
+        H, W, _ = self.img.shape
+        mask = np.zeros((H, W), dtype=np.uint8)
+        for i, m in enumerate(self.masks, start=1):
+            mask[m > 0] = i
+        return mask
+
 
 if __name__ == "__main__":
     from segment_anything import sam_model_registry, SamPredictor
+
     sam_checkpoint = "../pretrained_weights/sam_vit_h_4b8939.pth"  # default model
 
     model_type = "vit_h"
